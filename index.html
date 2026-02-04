@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Climbing Lab - Analisi & Leaderboard</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js" type="module"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js" type="module"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js" type="module"></script>
+
+    <style>
+        :root {
+            --accent-red: #fb7185;
+            --dark-bg: #020617;
+        }
+
+        body {
+            background-color: var(--dark-bg);
+            color: #f8fafc;
+            font-family: 'Inter', system-ui, sans-serif;
+            overflow-x: hidden;
+        }
+
+        .bg-animate {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -1;
+            background: radial-gradient(circle at 50% 50%, #1e1b4b 0%, #020617 100%);
+        }
+
+        .particle {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(251, 113, 133, 0.15);
+            animation: float 15s infinite linear;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0) translateX(0); opacity: 0; }
+            10% { opacity: 0.4; }
+            90% { opacity: 0.4; }
+            100% { transform: translateY(-100vh) translateX(20vw); opacity: 0; }
+        }
+
+        .card {
+            background-color: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(251, 113, 133, 0.15);
+            transition: transform 0.3s ease;
+        }
+
+        .accent-red-text { color: var(--accent-red); }
+
+        .btn-red {
+            background: linear-gradient(135deg, #fb7185 0%, #e11d48 100%);
+            box-shadow: 0 4px 15px rgba(225, 29, 72, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .btn-red:hover {
+            filter: brightness(1.1);
+            transform: translateY(-2px);
+        }
+
+        input {
+            background: rgba(15, 23, 42, 0.7) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: white !important;
+        }
+
+        input:focus {
+            border-color: var(--accent-red) !important;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(251, 113, 133, 0.2);
+        }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-10">
+
+    <div class="bg-animate" id="particles"></div>
+
+    <div class="max-w-5xl mx-auto relative z-10">
+        <header class="text-center mb-10">
+            <h1 class="text-5xl font-black tracking-tighter text-white mb-2">
+                CLIMBING<span class="accent-red-text italic">LAB</span>
+            </h1>
+            <p class="text-slate-400 text-sm uppercase tracking-[0.3em]">Performance & Leaderboard</p>
+        </header>
+
+        <div class="card p-8 rounded-3xl mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="text-[10px] font-bold uppercase text-slate-500 mb-2 block tracking-widest">Name Atleta / Athletenname</label>
+                    <input type="text" id="username" class="w-full rounded-xl p-4 text-lg font-bold" placeholder="Esempio: Adam Ondra">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold uppercase text-slate-500 mb-2 block tracking-widest">Peso / Körpergewicht (kg)</label>
+                    <input type="number" id="bodyweight" class="w-full rounded-xl p-4 text-lg font-bold" placeholder="70" onchange="calculateAll()">
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
+            <div class="card p-6 rounded-2xl">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-xs font-black uppercase text-slate-400">Finger Max (20mm)</span>
+                    <i class="fa-solid fa-hand-fist accent-red-text"></i>
+                </div>
+                <input type="number" id="fingerInput" class="w-full rounded-xl p-3 mb-2" placeholder="+kg" oninput="calculateAll()">
+                <div class="flex justify-between text-[10px] font-bold">
+                    <span class="text-slate-500">Target: 220% Totale</span>
+                    <span id="fingerRes" class="accent-red-text">--%</span>
+                </div>
+            </div>
+
+            <div class="card p-6 rounded-2xl">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-xs font-black uppercase text-slate-400">Dead Hang</span>
+                    <i class="fa-solid fa-clock accent-red-text"></i>
+                </div>
+                <input type="number" id="hangInput" class="w-full rounded-xl p-3 mb-2" placeholder="Sec" oninput="calculateAll()">
+                <div class="flex justify-between text-[10px] font-bold">
+                    <span class="text-slate-500">Target: 300s</span>
+                    <span id="hangRes" class="accent-red-text">--</span>
+                </div>
+            </div>
+
+            <div class="card p-6 rounded-2xl">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-xs font-black uppercase text-slate-400">Shoulder Press</span>
+                    <i class="fa-solid fa-dumbbell accent-red-text"></i>
+                </div>
+                <input type="number" id="shoulderInput" class="w-full rounded-xl p-3 mb-2" placeholder="kg" oninput="calculateAll()">
+                <div class="flex justify-between text-[10px] font-bold">
+                    <span class="text-slate-500">Target: 40% Peso</span>
+                    <span id="shoulderRes" class="accent-red-text">--%</span>
+                </div>
+            </div>
+
+            <div class="card p-6 rounded-2xl">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-xs font-black uppercase text-slate-400">Trazione / Pull Up</span>
+                    <i class="fa-solid fa-person-arrow-up-from-line accent-red-text"></i>
+                </div>
+                <input type="number" id="pullInput" class="w-full rounded-xl p-3 mb-2" placeholder="+kg" oninput="calculateAll()">
+                <div class="flex justify-between text-[10px] font-bold">
+                    <span class="text-slate-500">Target: +70% Peso</span>
+                    <span id="pullRes" class="accent-red-text">--%</span>
+                </div>
+            </div>
+
+            <div class="card p-6 rounded-2xl">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-xs font-black uppercase text-slate-400">Push Ups</span>
+                    <i class="fa-solid fa-bolt accent-red-text"></i>
+                </div>
+                <input type="number" id="pushInput" class="w-full rounded-xl p-3 mb-2" placeholder="Reps" oninput="calculateAll()">
+                <div class="flex justify-between text-[10px] font-bold">
+                    <span class="text-slate-500">Target: 65 Reps</span>
+                    <span id="pushRes" class="accent-red-text">--</span>
+                </div>
+            </div>
+
+            <div class="card p-6 rounded-2xl">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-xs font-black uppercase text-slate-400">Core Hollow</span>
+                    <i class="fa-solid fa-child accent-red-text"></i>
+                </div>
+                <input type="number" id="coreInput" class="w-full rounded-xl p-3 mb-2" placeholder="Sec" oninput="calculateAll()">
+                <div class="flex justify-between text-[10px] font-bold">
+                    <span class="text-slate-500">Target: 90s</span>
+                    <span id="coreRes" class="accent-red-text">--</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex justify-center mb-12">
+            <button id="saveBtn" onclick="submitData()" class="btn-red text-white font-black uppercase tracking-widest py-4 px-12 rounded-2xl transform active:scale-95 disabled:opacity-50 text-lg">
+                Pubblica / Veröffentlichen
+            </button>
+        </div>
+
+        <div id="resultsSection" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+            <div class="card p-6 rounded-3xl h-[400px]">
+                <canvas id="spiderChart"></canvas>
+            </div>
+            <div class="card p-8 rounded-3xl border-l-4 border-rose-500 shadow-xl">
+                <h3 class="text-2xl font-black uppercase mb-6 italic tracking-tight">Analisi Performance</h3>
+                <div id="analysisContent" class="space-y-4"></div>
+            </div>
+        </div>
+
+        <div class="card rounded-3xl overflow-hidden mb-20 shadow-2xl">
+            <div class="p-6 bg-rose-500/10 border-b border-rose-500/20 flex justify-between items-center">
+                <h2 class="text-xl font-black uppercase italic text-white tracking-widest">Global Leaderboard</h2>
+                <span class="text-[10px] text-slate-500 font-bold uppercase">Top 15</span>
+            </div>
+            <div class="overflow-x-auto custom-scrollbar">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="text-[10px] uppercase text-slate-500 font-bold border-b border-white/5">
+                            <th class="p-5">#</th>
+                            <th class="p-5">Atleta</th>
+                            <th class="p-5">Score</th>
+                            <th class="p-5">Dita</th>
+                            <th class="p-5">Pull</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboardBody">
+                        <tr><td colspan="5" class="p-10 text-center text-slate-600">Initialisierung...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Setup
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'climbing-rank-app';
+
+        let myChart = null;
+        let currentUser = null;
+
+        // AUTHENTICATION GUARD (Rule 3)
+        const initAuth = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Auth error:", error);
+            }
+        };
+
+        // Start Auth
+        initAuth();
+
+        // Listen for Auth changes and THEN start Firestore operations
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                startLeaderboardListener();
+            }
+        });
+
+        // Background particles
+        const partContainer = document.getElementById('particles');
+        for (let i = 0; i < 20; i++) {
+            const p = document.createElement('div');
+            p.className = 'particle';
+            p.style.width = p.style.height = (Math.random() * 5 + 2) + 'px';
+            p.style.left = Math.random() * 100 + 'vw';
+            p.style.top = Math.random() * 100 + 'vh';
+            p.style.animationDuration = (Math.random() * 10 + 10) + 's';
+            partContainer.appendChild(p);
+        }
+
+        const BENCHMARKS = {
+            finger: { min: 0, max: 1.20 },
+            hang: { min: 120, max: 300 },
+            shoulder: { min: 0.25, max: 0.40 },
+            pull: { min: 0.40, max: 0.70 },
+            push: { min: 25, max: 65 },
+            core: { min: 30, max: 90 }
+        };
+
+        const normalize = (v, min, max) => Math.min(100, Math.max(20, 20 + ((v - min) / (max - min)) * 80));
+
+        window.calculateAll = function() {
+            const bw = parseFloat(document.getElementById('bodyweight').value);
+            if (!bw || bw <= 0) return null;
+
+            const data = {
+                fingerAdd: parseFloat(document.getElementById('fingerInput').value) || 0,
+                hang: parseFloat(document.getElementById('hangInput').value) || 0,
+                shoulder: parseFloat(document.getElementById('shoulderInput').value) || 0,
+                pullAdd: parseFloat(document.getElementById('pullInput').value) || 0,
+                push: parseFloat(document.getElementById('pushInput').value) || 0,
+                core: parseFloat(document.getElementById('coreInput').value) || 0
+            };
+
+            const metrics = {
+                finger: data.fingerAdd / bw,
+                shoulder: data.shoulder / bw,
+                pull: data.pullAdd / bw
+            };
+
+            document.getElementById('fingerRes').innerText = `${((1 + metrics.finger)*100).toFixed(0)}%`;
+            document.getElementById('hangRes').innerText = `${data.hang}s`;
+            document.getElementById('shoulderRes').innerText = `${(metrics.shoulder*100).toFixed(0)}%`;
+            document.getElementById('pullRes').innerText = `+${(metrics.pull*100).toFixed(0)}%`;
+            document.getElementById('pushRes').innerText = `${data.push}`;
+            document.getElementById('coreRes').innerText = `${data.core}s`;
+
+            const scores = {
+                finger: normalize(metrics.finger, BENCHMARKS.finger.min, BENCHMARKS.finger.max),
+                hang: normalize(data.hang, BENCHMARKS.hang.min, BENCHMARKS.hang.max),
+                shoulder: normalize(metrics.shoulder, BENCHMARKS.shoulder.min, BENCHMARKS.shoulder.max),
+                pull: normalize(metrics.pull, BENCHMARKS.pull.min, BENCHMARKS.pull.max),
+                push: normalize(data.push, BENCHMARKS.push.min, BENCHMARKS.push.max),
+                core: normalize(data.core, BENCHMARKS.core.min, BENCHMARKS.core.max)
+            };
+
+            updateChart(scores);
+            updateAnalysis(scores);
+            return { scores, metrics };
+        };
+
+        window.submitData = async function() {
+            if (!currentUser) {
+                alert("Authentifizierung läuft noch...");
+                return;
+            }
+
+            const name = document.getElementById('username').value.trim();
+            const bw = parseFloat(document.getElementById('bodyweight').value);
+
+            if (!name || !bw) {
+                alert("Bitte Name und Gewicht eingeben!");
+                return;
+            }
+
+            const res = calculateAll();
+            if (!res) return;
+
+            const avg = Object.values(res.scores).reduce((a,b) => a+b, 0) / 6;
+            const btn = document.getElementById('saveBtn');
+            btn.disabled = true;
+            btn.innerText = "SENDEN...";
+
+            try {
+                // RULE 1: Use strict paths
+                const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
+                await addDoc(colRef, {
+                    name,
+                    avg,
+                    finger: res.metrics.finger,
+                    pull: res.metrics.pull,
+                    timestamp: Date.now(),
+                    uid: currentUser.uid
+                });
+                document.getElementById('resultsSection').classList.remove('hidden');
+                document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
+                btn.innerText = "GESPEICHERT!";
+            } catch(e) {
+                console.error("Save error:", e);
+                btn.innerText = "FEHLER";
+                btn.disabled = false;
+            }
+        };
+
+        function startLeaderboardListener() {
+            // RULE 1: Correct path
+            const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
+            
+            // RULE 2: Avoid complex queries, sort in JS
+            onSnapshot(colRef, (snap) => {
+                const entries = [];
+                snap.forEach(d => entries.push(d.data()));
+                
+                // Sort by score in memory
+                entries.sort((a,b) => b.avg - a.avg);
+
+                const tbody = document.getElementById('leaderboardBody');
+                tbody.innerHTML = entries.slice(0, 15).map((e, i) => `
+                    <tr class="border-b border-white/5 hover:bg-white/[0.02] transition">
+                        <td class="p-5 font-black text-xs ${i < 3 ? 'accent-red-text' : 'text-slate-600'}">#${i+1}</td>
+                        <td class="p-5 font-bold text-white text-sm">${e.name}</td>
+                        <td class="p-5 font-mono text-slate-400 font-bold">${Math.round(e.avg)}%</td>
+                        <td class="p-5 text-xs text-slate-500">${((1+e.finger)*100).toFixed(0)}%</td>
+                        <td class="p-5 text-xs text-slate-500">+${(e.pull*100).toFixed(0)}%</td>
+                    </tr>
+                `).join('') || '<tr><td colspan="5" class="p-10 text-center text-slate-600">Noch keine Einträge.</td></tr>';
+            }, (error) => {
+                console.error("Snapshot error:", error);
+            });
+        }
+
+        function updateAnalysis(scores) {
+            const labels = { finger: "Finger", hang: "Hang", shoulder: "Shoulder", pull: "Pull", push: "Push", core: "Core" };
+            const container = document.getElementById('analysisContent');
+            container.innerHTML = Object.entries(scores).map(([k, v]) => `
+                <div class="flex justify-between border-b border-white/5 pb-2">
+                    <span class="text-[10px] font-bold uppercase text-slate-500">${labels[k]}</span>
+                    <span class="text-sm font-black accent-red-text">${Math.round(v)}%</span>
+                </div>
+            `).join('');
+        }
+
+        function updateChart(scores) {
+            const ctx = document.getElementById('spiderChart').getContext('2d');
+            const data = Object.values(scores);
+            if (myChart) {
+                myChart.data.datasets[0].data = data;
+                myChart.update();
+            } else {
+                myChart = new Chart(ctx, {
+                    type: 'radar',
+                    data: {
+                        labels: ['FINGER', 'HANG', 'SHOULDER', 'PULL', 'PUSH', 'CORE'],
+                        datasets: [{ 
+                            data: data, 
+                            backgroundColor: 'rgba(251, 113, 133, 0.2)', 
+                            borderColor: '#fb7185', 
+                            borderWidth: 3, 
+                            pointRadius: 0
+                        }]
+                    },
+                    options: {
+                        scales: { 
+                            r: { 
+                                grid: { color: 'rgba(255,255,255,0.05)' }, 
+                                angleLines: { color: 'rgba(255,255,255,0.05)' },
+                                pointLabels: { color: '#94a3b8', font: { weight: 'bold' } },
+                                ticks: { display: false }, 
+                                min: 0, max: 100 
+                            } 
+                        },
+                        plugins: { legend: { display: false } },
+                        responsive: true,
+                        maintainAspectRatio: false
+                    }
+                });
+            }
+        }
+    </script>
+</body>
+</html>
